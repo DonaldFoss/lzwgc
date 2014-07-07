@@ -7,11 +7,30 @@ LZW-GC does not require resets or many arbitrary decisions.
 
 Instead, an incremental garbage collector (GC) will collect exactly one token for every one allocated. An exponential decay factor slowly removes old and unused patterns from memory to eventually be replaced by new patterns. LZW-GC has all the advantages of a sliding-window GC, but is much simpler and much less arbitrary.
 
-Characteristics of this implementation of LZW-GC:
+High level characteristics for this implementation of LZW-GC:
 
 * operates on the byte level 
-* fixed dictionary size of 4094 (0..0xffd)
-* encoded at 12 bits per token
-* tokens 0xffe,0xfff reserved for client use.
+* fixed dictionary size of 4095 (0..0xffe)
+* token 0xfff is escape for client use
+* encoding is 12 bits per token, bigendian
 
-LZW works well together with Huffman encoding. These reserved tokens are intended to serve as an out-of-band stop code and reset for a potentially adaptive Huffman (or [Polar](http://www.ezcodesample.com/prefixer/prefixer_article.html)) encoding layer.
+The escape token is primarily to support a subsequent Huffman or [Polar](http://www.ezcodesample.com/prefixer/prefixer_article.html) encoding. For example, we might escape then follow with the 1 bit to indicate we're finished, or the 0 bit to reset the Huffman tree and continue. 
+
+## Memory Usage
+
+Encoding requires about 20kB of memory, and decoding a bit more. 
+
+
+## Using
+
+This project is simple and small scale: just a few C files, headers, and a Makefile. 
+
+
+
+
+
+
+
+
+
+
