@@ -9,28 +9,21 @@ Instead, an incremental garbage collector (GC) will collect exactly one token fo
 
 High level characteristics for this implementation of LZW-GC:
 
-* operates on the byte level 
-* fixed dictionary size of 4095 (0..0xffe)
-* token 0xfff is escape for client use
-* encoding is 12 bits per token, bigendian
+* operates on the byte level
+* configurable dictionary size in bits (min 9, max 15, default 12)
+* reserves topmost token for client; e.g. 0xfff for 12 bits
+* suitable for hard realtime, embedded systems
 
-The escape token is primarily to support a subsequent Huffman or [Polar](http://www.ezcodesample.com/prefixer/prefixer_article.html) encoding. For example, we might escape then follow with the 1 bit to indicate we're finished, or the 0 bit to reset the Huffman tree and continue. 
+The reserved token is primarily to support a subsequent Huffman or [Polar](http://www.ezcodesample.com/prefixer/prefixer_article.html) encoding. In this case, it would be used as an escape token, to either indicate end of input or perhaps reset the Huffman tree in an adaptive encoding.
 
 ## Memory Usage
 
-Encoding requires about 20kB of memory, and decoding a bit more. 
 
 
-## Using
+## (Thought): Pre-Initialized Dictionary?
 
-This project is simple and small scale: just a few C files, headers, and a Makefile. 
+An interesting possibility with LZW-GC is to start with a pre-initialized dictionary, e.g. based on compressing a known input. With the adaptive nature of LZW-GC, we wouldn't be hurt by this even if the actual input varies wildly from the expected. But the advantage of doing so could be significant in cases where we compress lots of similar smaller inputs and want to avoid the 'warmup' costs.
 
-
-
-
-
-
-
-
+ Due to the garbage collection process, this will not hinder problem specific compression.
 
 
