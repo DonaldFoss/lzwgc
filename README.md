@@ -10,11 +10,30 @@ Instead, an incremental garbage collector (GC) will collect exactly one token fo
 High level characteristics for this implementation of LZW-GC:
 
 * operates on the byte level
-* configurable dictionary size in bits (min 9, max 15, default 12)
+* configurable dictionary size in bits (min 9, max 24, default 12)
 * reserves topmost token for client; e.g. 0xfff for 12 bits
-* suitable for hard realtime, embedded systems
+* heavy but static memory use after initialization
 
 The reserved token is primarily to support a subsequent Huffman or [Polar](http://www.ezcodesample.com/prefixer/prefixer_article.html) encoding. In this case, it would be used as an escape token, to either indicate end of input or perhaps reset the Huffman tree in an adaptive encoding.
+
+## Using
+
+Use `make` to generate program `lzwgc` and eventually a separate program for Huffman or Polar encodings.
+
+        lzwgc (x|c) [-bN]
+            x to extract, c to compress
+            N in range 9..24 (default 12); dict size 2^N-1
+            processes stdin → stdout
+
+Note that compression uses a simplistic exhaustive search and gets very slow for larger numbers of bits. It's designed to test the concept, not get maximal performance.
+
+At the moment, lzwgc outputs/inputs 16 bit tokens (bigendian) for up to 16 bits, and 24 bit tokens for up to 24 bits. These are octet aligned, which makes them relatively easy to work with, and it should be easy to compute the ideal packed size. For now, final packing is left to the Huffman encoder.
+
+## Special Implementation Considerations
+
+Garbage collection is limited by what the decompressor can predict. To ensure consistent views for both compressor and decompressor, we must GC immediately after adding a token to the dictionary, i.e. such that tokens collected does not depend on future inputs.
+
+Plain old LZW already has a special case where a pattern like `abababa` might emit an unknown token for `aba` that is not yet known to the decompressor. This 'expected' special case happens only when the first and last characters are the same, so can be regenerated.
 
 ## (Thought): Pre-Initialized Dictionary?
 
