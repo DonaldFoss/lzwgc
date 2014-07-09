@@ -16,10 +16,6 @@ High level characteristics for this implementation of LZW-GC:
 
 The reserved token is primarily to support a subsequent Huffman or [Polar](http://www.ezcodesample.com/prefixer/prefixer_article.html) encoding. In this case, it would be used as an escape token, to either indicate end of input or perhaps reset the Huffman tree in an adaptive encoding.
 
-## Memory Usage
-
-
-
 ## (Thought): Pre-Initialized Dictionary?
 
 An interesting possibility with LZW-GC is to start with a pre-initialized dictionary, e.g. based on compressing a known input. With the adaptive nature of LZW-GC, we wouldn't be hurt by this even if the actual input varies wildly from the expected. But the advantage of doing so could be significant in cases where we compress lots of similar smaller inputs and want to avoid the 'warmup' costs.

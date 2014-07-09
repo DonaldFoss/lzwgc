@@ -5,9 +5,9 @@
 
 typedef unsigned short i16;
 
-inline i16 token(i16 ix)  { return 256 + ix;  }
-inline i16 index(i16 tok) { return tok - 256; }
-inline bool valid_token(unsigned short tok, lzwgc_dict* dict) {
+i16 token(i16 ix)  { return 256 + ix;  }
+i16 index(i16 tok) { return tok - 256; }
+bool valid_token(unsigned short tok, lzwgc_dict* dict) {
     return (tok < dict->size) 
         && ((tok < 256) || 
             (tok != dict->prev_token[index(tok)]));
