@@ -66,7 +66,7 @@ High level characteristics for this implementation of LZW-GC:
 * dictionary size configured in bit width (9..24)
 * reserves topmost token for client; e.g. 0xfff for 12 bits
 * SLOW encoding for large dictionary sizes (linear search)
-* predictable time-space performance, but not especially efficient
+* predictable time-space performance, no allocations after initialization
 
 The reserved token can be used as an escape or stop word for packaging or a layered (e.g. Huffman) encoding.
 
@@ -80,10 +80,42 @@ Use `make` to generate program `lzwgc` and eventually a separate program for Huf
             dict size 2^N-1 (reserving top code)
             processes stdin → stdout
 
-Note that compression uses a simplistic exhaustive search and gets very slow for larger numbers of bits. It's designed to test the concept, not get maximal performance. I could introduce some fixed-width reverse lookups (e.g. a hashtable of page-ranges to search). 
-
 At the moment, lzwgc outputs/inputs 16 bit tokens (bigendian) for up to 16 bits, and 24 bit tokens for up to 24 bits. These are octet aligned, which makes them relatively easy to work with, and it should be easy to compute the ideal packed size. 
+
+Todo: improve compression performance by supporting a fast reverse dictionary lookup, e.g. a hashtable that uses token+character and provides a possible token, and that may have elements removed from it too.
+
+## Compression Quality:
+
+The compression quality for LZW-GC depends only on dictionary size and the input file. In this case, I'm using sizes 2^N - 1 (thus reserving one token, common for stop codes and similar). The figures reported below are for packed tokens. But since I don't actually pack the tokens yet, I simply multiply the effective size by the appropriate factor (e.g. 12/16 for the 12 bit tokens). 
+
+From the [Canterbury Corpus](http://corpus.canterbury.ac.nz/details/cantrbry/RatioByRatio.html). Values here are bits per character (so 4 is a 50% compression ratio, and 2 is 75%; lower is better):
+
+        FILE\BITS               10      12      14      16      18  
+        alice29.txt  text      4.06    3.48    3.33    3.69    4.15     
+        asyoulik.txt play      4.31    3.75    3.61    4.01    4.52
+        cp.html      html      4.20    3.76    4.25    4.86    5.47
+        fields.c     Csrc      3.60    3.81    4.44    5.08    5.71
+        grammar.lsp  list      4.45    5.19    6.06    6.92    7.79
+        kennedy.xls  Excl      1.82    2.01    2.24    2.54    2.74  
+        lcet10.txt   tech      4.11    3.49    3.14    3.17    3.55
+        plrabn12.txt poem      4.26    3.66    3.37    3.39    3.77
+        ptt5         fax       0.98    0.96    0.98    1.10    1.23
+        sum          SPRC      3.95    4.08    4.57    5.22    5.87
+        xargs.1      man       4.51    5.09    5.94    6.78    7.63
+
+        cantrbry.tar tar       2.72    2.53    2.50    2.63    2.81
+
+Even a casual look will reveal that the compression here isn't very good by modern standards, especially not for smaller files (grammar.lsp, xargs.1). In several cases, the file was smaller than the dictionary. The last file is simply the result of tarballing the files without compression. I expect the compression could in most cases be improved by a subsequent Huffman encoding or similar, but I have not yet written the code for that. 
+
+Sadly, Canterbury corpus does not include LZW for comparison. OTOH, Matt Mahoney's large text challenge (encoding Wikipedia) does include tg
+
 
 ## (Thought): Pre-Initialized Dictionary?
 
 An interesting possibility with LZW-GC is to start with a pre-initialized dictionary, e.g. based on compressing a known input. With the adaptive nature of LZW-GC, we wouldn't be hurt by this even if the actual input varies wildly from the expected. But the advantage of doing so could be significant in cases where we compress lots of small, similar inputs and want to avoid repeated 'warmup' costs.
+
+## 
+
+
+
+

@@ -24,12 +24,22 @@ typedef struct {
     unsigned char * added_char;  // character matched
     token_t         hist_token;  // last token in update stream 
     uint32_t        alloc_idx;   // last index allocated
+
+    // output the last GC'd token after each update (at alloc_idx)
+    // this is mostly to help maintain a reverse lookup table.
+    token_t         gc_tok;
+    unsigned char   gc_char;
 } lzwgc_dict;
 
 typedef struct {
     // internal state
     lzwgc_dict      dict;
     token_t         matched_token;
+
+    // a collision hashtable for fast reverse lookups...
+    token_t *       ht_content;     // tokens to search 
+    uint32_t        ht_size;         // hashtable max size
+    uint32_t        ht_saturation;   // number of filled locations
 
     // output after each operation (at most one token)
     bool            have_output;

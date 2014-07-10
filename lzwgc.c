@@ -10,6 +10,10 @@ bool valid_token(lzwgc_dict* dict, token_t tok) {
            ((tok < 256) || 
             (tok != dict->prev_token[index(tok)]));
 }
+uint32_t hash_sc(token_t t, unsigned char c) {
+    return ((c << 23) + (t << 11) + (c << 7) + t) * 16180319;
+}
+
 
 void lzwgc_dict_init(lzwgc_dict* dict, uint32_t size) {
     assert(((1<<8) <= size) && (size <= (1<<24)));
@@ -57,12 +61,15 @@ void lzwgc_dict_update(lzwgc_dict* dict, token_t tok) {
             break;
         dict->match_count[ii] /= 2;
     }
+    // remember the GC'd element (to support compression)
+    dict->alloc_idx = ii;
+    dict->gc_tok  = dict->prev_token[ii];
+    dict->gc_char = dict->added_char[ii];
 
-    // add to dictionary history token + first character of input token
+    // add new element to dictionary
     dict->prev_token[ii] = dict->hist_token;
     dict->added_char[ii] = first_char_of_tok_received;
     dict->hist_token = tok_received;
-    dict->alloc_idx = ii;
 }
 
 uint32_t lzwgc_dict_readrev(lzwgc_dict* dict, token_t tok, unsigned char* sr, uint32_t size) {
@@ -89,24 +96,95 @@ void lzwgc_compress_init(lzwgc_compress* st, uint32_t size) {
     lzwgc_dict_init(&(st->dict), size);
     st->matched_token = size; // invalid token to start
 
+    // support fast reverse dictionary lookup
+    st->ht_size = 2 * size; // so we have about 50% fill for full dict
+    size_t const ht_buff_size = sizeof(token_t) * st->ht_size;
+    st->ht_content = malloc(ht_buff_size);
+    assert(0 != st->ht_content);
+    for(uint32_t ii = 0; ii < st->ht_size; ++ii)
+        st->ht_content[ii] = 0;
+    st->ht_saturation = 0;
+
+    // no output at start
     st->have_output   = false;
     st->token_output  = size;
 }
 
+// declare string s+c to be stored as token `loc`
+void lzwgc_hashtable_add(lzwgc_compress* st, token_t s, unsigned char c, token_t loc) {
+    assert(loc >= 256);
+    uint32_t const ht_size = st->ht_size;
+    uint32_t ix = hash_sc(s,c) % ht_size;
+    while(1) {
+        token_t const tok = st->ht_content[ix];
+        bool const bSpaceFound = ((tok == loc) || (tok == 1) || (tok == 0));
+        if(bSpaceFound) break;
+        ix = (ix + 1) % ht_size; // collision
+    }
+    st->ht_content[ix] = loc; // search for s+c at loc
+    // saturation increases when we modify a zero entry
+    if(0 == st->ht_content[ix]) {
+        st->ht_saturation += 1;
+    }
+}
+
+// update hashtable whenever we update dictionary
+void lzwgc_hashtable_update(lzwgc_compress* st) {
+    // remove prior entry, if it exists:
+    token_t const tokenTgt = token(st->dict.alloc_idx);
+    uint32_t const ht_size = st->ht_size;
+    uint32_t ix = hash_sc(st->dict.gc_tok, st->dict.gc_char) % ht_size;
+    while(0 != st->ht_content[ix]) {
+        if(tokenTgt == st->ht_content[ix]) {
+            st->ht_content[ix] = 1; // clear entry (but allow collisions)
+            break;
+        }
+        ix = (ix + 1) % ht_size;
+    }
+
+    // add the new entry
+    token_t const s = st->dict.prev_token[st->dict.alloc_idx];
+    unsigned char c = st->dict.added_char[st->dict.alloc_idx];
+    lzwgc_hashtable_add(st,s,c,tokenTgt);    
+
+    // rebuild from dictionary whenever saturation > 80%.
+    // since ht_size is over twice dynamic dictionary size, and
+    // `1` entries may be rewritten, this won't happen often. 
+    bool const bSaturated = (5 * st->ht_saturation) > (4 * st->ht_size);
+    if(bSaturated) {
+        // clear hashtable (no realloc)
+        for(uint32_t ii = 0; ii < st->ht_size; ++ii) {
+            st->ht_content[ii] = 0;
+        }
+        // rebuild from dictionary
+        uint32_t const max_dict_index = index(st->dict.size);
+        for(uint32_t ii = 0; ii < max_dict_index; ++ii) {
+            lzwgc_hashtable_add(st,st->dict.prev_token[ii]
+                                  ,st->dict.added_char[ii]
+                                  ,token(ii));
+        }
+    }
+}
+
+
 void lzwgc_compress_recv(lzwgc_compress* st, unsigned char c) {
-
     token_t const s = st->matched_token;
-    uint32_t const ii_max = index(st->dict.size);
 
-    for(uint32_t ii = 0; ii < ii_max; ++ii) {
-        if((c == st->dict.added_char[ii]) && (s == st->dict.prev_token[ii])) {
-            st->matched_token = token(ii);
-            st->have_output = false;
-            return; // input 'c' will be compressed
+    // Use hashtable for reverse dictionary lookup.
+    uint32_t const ht_size = st->ht_size;
+    uint32_t ix = hash_sc(s,c) % ht_size;
+    while(0 != st->ht_content[ix]) {
+        token_t const tok = st->ht_content[ix];
+        ix = (ix + 1) % ht_size;
+        if(tok < 256) { continue; } // a deleted entry
+        uint32_t const dd = index(tok);
+        if((st->dict.added_char[dd] == c) && (st->dict.prev_token[dd] == s)) {
+            st->matched_token = tok;
+            return; // s+c found in dictionary
         }
     }
 
-    // emit the completed token (does not include 'c')
+    // emit completed token (not including added character 'c')
     st->have_output  = (s < st->dict.size);
     st->token_output = s;
 
@@ -114,8 +192,10 @@ void lzwgc_compress_recv(lzwgc_compress* st, unsigned char c) {
     st->matched_token = (token_t) c;
 
     // update the dictionary after output
-    if(st->have_output)
+    if(st->have_output) {
         lzwgc_dict_update(&(st->dict),st->token_output);
+        lzwgc_hashtable_update(st);
+    }
 }
 
 // unless input was empty, we should have a final output.
