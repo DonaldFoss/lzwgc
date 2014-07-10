@@ -7,10 +7,10 @@
 #include <assert.h>
 
 char const * helpText() { 
-    return "Usage: lzwgc (x|c) [-bN]\n" 
-           "  x to extract; c to compress\n"
+    return "Usage: lzwgc (x|c|d) [-bN]\n" 
+           "  x to extract; c to compress; d to debug\n"
            "  N in range 9..24, default 12\n"
-           "  processes stdin to stdout\n"; 
+           "  x,c process stdin to stdout\n";
 }
 
 void help_exit() {
@@ -20,6 +20,7 @@ void help_exit() {
 
 void compress(FILE* in, FILE* out, int dict_bits);
 void decompress(FILE* in, FILE* out, int dict_bits);
+void debug(FILE* in, FILE* out, int dict_bits);
 
 int main(int argc, char const * args[]) {
     if(argc < 2) help_exit();
@@ -40,6 +41,7 @@ int main(int argc, char const * args[]) {
 
     if('c' == mode)      compress(stdin,stdout,bits);
     else if('x' == mode) decompress(stdin,stdout,bits);
+    else if('d' == mode) debug(stdin,stdout,bits);
     else help_exit();
 
     return 0;
@@ -104,7 +106,73 @@ void decompress(FILE* in, FILE* out, int bits) {
     lzwgc_decompress_fini(&st);
 }
 
+void compare_dicts(lzwgc_dict* dc, lzwgc_dict* dx, token_t tIO, unsigned long long loc);
 
+void debug(FILE* in, FILE* out, int bits) {
+    unsigned long long token_count = 0;
+    lzwgc_compress stc;
+    lzwgc_decompress stx;
+    uint32_t const dict_size = (1 << bits) - 1;
+    size_t const buff_size = 4096;
+    unsigned char read_buff[buff_size];
+
+    lzwgc_compress_init(&stc,dict_size);
+    lzwgc_decompress_init(&stx,dict_size);
+
+    while(!feof(in)) {
+        size_t const read_count = fread(read_buff,1,buff_size,in);
+        for(size_t ii = 0; ii < read_count; ++ii) {
+            lzwgc_compress_recv(&stc,read_buff[ii]);
+            if(stc.have_output) {
+                token_t const tok = stc.token_output;
+                lzwgc_decompress_recv(&stx,tok);
+                compare_dicts(&stc.dict,&stx.dict,tok,token_count++);
+                fwrite(stx.output_chars,1,stx.output_count,out);
+            }
+        }
+    } 
+
+    lzwgc_compress_fini(&stc);
+    if(stc.have_output) {
+        token_t const tok = stc.token_output;
+        lzwgc_decompress_recv(&stx,tok);
+        compare_dicts(&stc.dict,&stx.dict,tok,token_count++);
+        fwrite(stx.output_chars,1,stx.output_count,out);
+    }
+    lzwgc_decompress_fini(&stx);
+}
+
+void compare_dicts(lzwgc_dict* dc, lzwgc_dict* dx, token_t tIO, unsigned long long tokct) {
+    bool const alloc_same = dc->alloc_next == dx->alloc_next;
+    if(!alloc_same) 
+        fprintf(stderr,"%8llu %04x divergent free token: %04x vs. %04x \n",tokct,tIO,
+            dc->alloc_next, dx->alloc_next);
+
+
+    if(tIO > 256) {
+        uint32_t const ix = tIO - 256;
+        bool const refct_same   = dc->match_count[ix] == dx->match_count[ix];
+        bool const addc_same    = dc->added_char[ix]  == dx->added_char[ix];
+        bool const prevtok_same = dc->prev_token[ix]  == dx->prev_token[ix];
+
+        if(!refct_same)
+            fprintf(stderr,"%8llu %04x divergent match count: %d vs. %d \n",tokct,tIO,
+                dc->match_count[ix], dx->match_count[ix]);
+        if(!addc_same || !prevtok_same) {
+            unsigned char dcdef[200];
+            unsigned char dxdef[200];
+            uint32_t dcCt = lzwgc_dict_readrev(dc,tIO,dcdef,199);
+            dcdef[dcCt] = 0;
+
+            uint32_t dxCt = lzwgc_dict_readrev(dx,tIO,dxdef,199);
+            dxdef[dxCt] = 0;
+
+            fprintf(stderr,"%8llu %04x divergent definitions: \n    %s\n    %s\n",tokct,tIO,
+                dcdef,dxdef);
+        }
+    }
+
+}
 
 
 

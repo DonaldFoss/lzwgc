@@ -14,7 +14,7 @@
 typedef uint32_t token_t; // documentation some integers as tokens
 
 typedef struct {
-    uint32_t        size;   // size of dictionary
+    uint32_t        size;        // size of dictionary
     uint32_t      * match_count; // slice of match counts
     token_t       * prev_token;  // previously matched
     unsigned char * added_char;  // character matched
@@ -50,6 +50,9 @@ typedef struct {
 // trivially fit cache. 
 void lzwgc_dict_init(lzwgc_dict*, uint32_t size);
 void lzwgc_dict_fini(lzwgc_dict*);
+
+// fetch at most count elements (reversed)
+uint32_t lzwgc_dict_readrev(lzwgc_dict*, token_t, unsigned char*, uint32_t count); 
 
 // Incremental API; element at a time
 // compress will receive bytes and output zero or one tokens

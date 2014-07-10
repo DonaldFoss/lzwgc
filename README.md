@@ -31,7 +31,17 @@ At the moment, lzwgc outputs/inputs 16 bit tokens (bigendian) for up to 16 bits,
 
 ## Special Implementation Considerations
 
-Garbage collection is limited by what the decompressor can predict. To ensure consistent views for both compressor and decompressor, we must GC immediately after adding a token to the dictionary, i.e. such that tokens collected does not depend on future inputs.
+Garbage collection needs careful attention: if it isn't identical in the compressor and decompressor, the two will drift. The easiest (but not necessarily most efficient) way to achieve this is to separate the problem, i.e. such that the compressor's own match counts are computed based on its output (as though it were decompressing). 
+
+Unless 'compressor' and 'decompressor' have identical match counts, the dictionaries will drift apart. The decompressor increments match count for every token received, incrementing the match count for that token and its dependencies. The compressor, thus, must increment match count for every token sent and its dependencies. The decompressor does GC - thus reducing match counts - just after processing an input token.
+
+ match only the token received and its dependencies. 
+
+The compressor generates matches just before outputting a token 
+
+* The compressor adds match counts when receiving input
+
+is limited by what the decompressor can predict. To ensure consistent views for both compressor and decompressor, we must GC immediately after adding a token to the dictionary, i.e. such that tokens collected does not depend on future inputs.
 
 Plain old LZW already has a special case where a pattern like `abababa` might emit an unknown token for `aba` that is not yet known to the decompressor. This 'expected' special case happens only when the first and last characters are the same, so can be regenerated.
 
