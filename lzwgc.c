@@ -177,10 +177,11 @@ void lzwgc_compress_recv(lzwgc_compress* st, unsigned char c) {
         token_t const tok = st->ht_content[ix];
         ix = (ix + 1) % ht_size;
         if(tok < 256) { continue; } // a deleted entry
-        uint32_t const dd = index(tok);
-        if((st->dict.added_char[dd] == c) && (st->dict.prev_token[dd] == s)) {
-            st->matched_token = tok;
-            return; // s+c found in dictionary
+        uint32_t const tx = index(tok);
+        if((st->dict.added_char[tx] == c) && (st->dict.prev_token[tx] == s)) {
+            st->matched_token = tok; // compress s+c into tok
+            st->have_output = false; // no output this step
+            return;
         }
     }
 
