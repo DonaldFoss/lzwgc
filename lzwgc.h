@@ -3,6 +3,10 @@
  * incrementally garbage collect the dictionary with intention to
  * better support large files or streams.
  *
+ * Unlike standard LZW, LZW-GC uses the same algorithm to update the
+ * dictionary at both compression and decompression. This avoids the
+ * special LZW corner case.
+ *
  * These APIs use simple assertions (assert.h) for error checking.
  */
 
@@ -18,7 +22,8 @@ typedef struct {
     uint32_t      * match_count; // slice of match counts
     token_t       * prev_token;  // previously matched
     unsigned char * added_char;  // character matched
-    uint32_t        alloc_next;  // the current 'free' token index
+    token_t         hist_token;  // last token in update stream 
+    uint32_t        alloc_idx;   // last index allocated
 } lzwgc_dict;
 
 typedef struct {
@@ -35,7 +40,6 @@ typedef struct {
 typedef struct {
     // internal state
     lzwgc_dict      dict;
-    token_t         prev_token; 
     unsigned char * srbuff;
 
     // output after each operation (a number of characters)
@@ -43,13 +47,9 @@ typedef struct {
     unsigned char * output_chars;
 } lzwgc_decompress;
 
-// here 'size' is the total dictionary size, and is the only parameter
-// typical size is 2^N-1 reserving topmost; e.g. 4095 reserving 0xfff
-// valid range is 2^8 to 2^24. Though, this implementation uses a simple
-// linear searches so becomes very inefficient once the search doesn't
-// trivially fit cache. 
-void lzwgc_dict_init(lzwgc_dict*, uint32_t size);
-void lzwgc_dict_fini(lzwgc_dict*);
+void lzwgc_dict_init(lzwgc_dict*, uint32_t size); // size from 2^8 to 2^24
+void lzwgc_dict_update(lzwgc_dict*, token_t); // update from token stream
+void lzwgc_dict_fini(lzwgc_dict*); // clear memory from dictionary
 
 // fetch at most count elements (reversed)
 uint32_t lzwgc_dict_readrev(lzwgc_dict*, token_t, unsigned char*, uint32_t count); 

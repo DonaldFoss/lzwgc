@@ -7,8 +7,8 @@
 #include <assert.h>
 
 char const * helpText() { 
-    return "Usage: lzwgc (x|c|d) [-bN]\n" 
-           "  x to extract; c to compress; d to debug\n"
+    return "Usage: lzwgc (x|c) [-bN]\n" 
+           "  x to extract; c to compress\n"
            "  N in range 9..24, default 12\n"
            "  x,c process stdin to stdout\n";
 }
@@ -136,17 +136,16 @@ void debug(FILE* in, FILE* out, int bits) {
     if(stc.have_output) {
         token_t const tok = stc.token_output;
         lzwgc_decompress_recv(&stx,tok);
-        compare_dicts(&stc.dict,&stx.dict,tok,token_count++);
         fwrite(stx.output_chars,1,stx.output_count,out);
     }
     lzwgc_decompress_fini(&stx);
 }
 
 void compare_dicts(lzwgc_dict* dc, lzwgc_dict* dx, token_t tIO, unsigned long long tokct) {
-    bool const alloc_same = dc->alloc_next == dx->alloc_next;
+    bool const alloc_same = dc->alloc_idx == dx->alloc_idx;
     if(!alloc_same) 
         fprintf(stderr,"%8llu %04x divergent free token: %04x vs. %04x \n",tokct,tIO,
-            dc->alloc_next, dx->alloc_next);
+            dc->alloc_idx, dx->alloc_idx);
 
 
     if(tIO > 256) {
