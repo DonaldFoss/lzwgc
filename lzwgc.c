@@ -2,6 +2,7 @@
 #include "lzwgc.h"
 #include <stdlib.h>
 #include <assert.h>
+#include <stdio.h>
 
 token_t token(uint32_t ix)  { return 256 + ix;  }
 uint32_t index(token_t tok) { return tok - 256; }
@@ -121,11 +122,11 @@ void lzwgc_hashtable_add(lzwgc_compress* st, token_t s, unsigned char c, token_t
         if(bSpaceFound) break;
         ix = (ix + 1) % ht_size; // collision
     }
-    st->ht_content[ix] = loc; // search for s+c at loc
     // saturation increases when we modify a zero entry
     if(0 == st->ht_content[ix]) {
         st->ht_saturation += 1;
     }
+    st->ht_content[ix] = loc; // search for s+c at loc
 }
 
 // update hashtable whenever we update dictionary
@@ -156,6 +157,7 @@ void lzwgc_hashtable_update(lzwgc_compress* st) {
         for(uint32_t ii = 0; ii < st->ht_size; ++ii) {
             st->ht_content[ii] = 0;
         }
+        st->ht_saturation = 0;
         // rebuild from dictionary
         uint32_t const max_dict_index = index(st->dict.size);
         for(uint32_t ii = 0; ii < max_dict_index; ++ii) {
