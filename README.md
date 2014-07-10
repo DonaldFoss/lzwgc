@@ -1,9 +1,9 @@
 
 ## Overview
 
-LZW-GC is a variation on the popular [LZW](http://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch) algorithm, with intention to make it much more adaptive to large inputs and long-running streams. 
+LZW-GC is a variation on the popular [LZW](http://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Welch) algorithm, with intention to make it much more adaptive to large inputs and long-running streams.
 
-LZW is very optimistic about learning patterns, and tends to add a lot of useless patterns to the dictionary. Then, it stops adding anything. Incremental garbage-collection (GC) of the more useless patterns will at least allow us to make much more efficient use of a fixed-size dictionary, and also allow us to adapt to changing patterns common to large archives.
+LZW is very optimistic about recording patterns, and tends to add a lot of useless patterns to its finite dictionary. Upon filling the dictionary, it stops recording anything. Incremental garbage-collection (GC) of the more useless patterns will at least allow us to make much more efficient use of a fixed-size dictionary, and also allow us to adapt to changing patterns common to large archives.
 
         typedef int token_t;
 
@@ -58,6 +58,8 @@ The more typical approach to adaptive dictionary compression is to reserve a tok
 
 LZW's simple, implementation-independent determinism is a useful feature for some applications, and LZW-GC preserves this and even goes a bit simpler by avoiding LZW's special case. Further, the incremental GC gives us the benefits of throwing out useless patterns without losing the warm-up benefits. 
 
+I haven't implemented the reset approach for direct comparisons. But, theoretically, it should be worse.
+
 ## This Implementation
 
 High level characteristics for this implementation of LZW-GC:
@@ -65,10 +67,10 @@ High level characteristics for this implementation of LZW-GC:
 * operates on the byte level
 * dictionary size configured in bit width (9..24)
 * reserves topmost token for client; e.g. 0xfff for 12 bits
-* SLOW encoding for large dictionary sizes (linear search)
+* uses collision hashtable for fast reverse-dictionary lookups 
 * predictable time-space performance, no allocations after initialization
 
-The reserved token can be used as an escape or stop word for packaging or a layered (e.g. Huffman) encoding.
+The performance isn't bad, but I wouldn't call it good, either. I'm sure a lot of improvements could be made.
 
 ### Using
 
@@ -82,40 +84,50 @@ Use `make` to generate program `lzwgc` and eventually a separate program for Huf
 
 At the moment, lzwgc outputs/inputs 16 bit tokens (bigendian) for up to 16 bits, and 24 bit tokens for up to 24 bits. These are octet aligned, which makes them relatively easy to work with, and it should be easy to compute the ideal packed size. 
 
-Todo: improve compression performance by supporting a fast reverse dictionary lookup, e.g. a hashtable that uses token+character and provides a possible token, and that may have elements removed from it too.
-
 ## Compression Quality:
 
 The compression quality for LZW-GC depends only on dictionary size and the input file. In this case, I'm using sizes 2^N - 1 (thus reserving one token, common for stop codes and similar). The figures reported below are for packed tokens. But since I don't actually pack the tokens yet, I simply multiply the effective size by the appropriate factor (e.g. 12/16 for the 12 bit tokens). 
 
-From the [Canterbury Corpus](http://corpus.canterbury.ac.nz/details/cantrbry/RatioByRatio.html). Values here are bits per character (so 4 is a 50% compression ratio, and 2 is 75%; lower is better):
+From the [Canterbury Corpus](http://corpus.canterbury.ac.nz/details/cantrbry/RatioByRatio.html). Values here are bits per character (so 2 is 75% compression; lower is better). Here `compress` (another variant of LZW) is included for comparison:
 
-        FILE\BITS               10      12      14      16      18  
+        FILE\BITS               10      12      14      16      18     
         alice29.txt  text      4.06    3.48    3.33    3.69    4.15     
-        asyoulik.txt play      4.31    3.75    3.61    4.01    4.52
-        cp.html      html      4.20    3.76    4.25    4.86    5.47
-        fields.c     Csrc      3.60    3.81    4.44    5.08    5.71
-        grammar.lsp  list      4.45    5.19    6.06    6.92    7.79
-        kennedy.xls  Excl      1.82    2.01    2.24    2.54    2.74  
-        lcet10.txt   tech      4.11    3.49    3.14    3.17    3.55
-        plrabn12.txt poem      4.26    3.66    3.37    3.39    3.77
-        ptt5         fax       0.98    0.96    0.98    1.10    1.23
+        asyoulik.txt play      4.31    3.75    3.61    4.01    4.52    
+        cp.html      html      4.20    3.76    4.25    4.86    5.47    
+        fields.c     Csrc      3.60    3.81    4.44    5.08    5.71    
+        grammar.lsp  list      4.45    5.19    6.06    6.92    7.79    
+        kennedy.xls  Excl      1.82    2.01    2.24    2.54    2.74      
+        lcet10.txt   tech      4.11    3.49    3.14    3.17    3.55      
+        plrabn12.txt poem      4.26    3.66    3.37    3.39    3.77      
+        ptt5         fax       0.98    0.96    0.98    1.10    1.23    
         sum          SPRC      3.95    4.08    4.57    5.22    5.87
         xargs.1      man       4.51    5.09    5.94    6.78    7.63
 
         cantrbry.tar tar       2.72    2.53    2.50    2.63    2.81
 
-Even a casual look will reveal that the compression here isn't very good by modern standards, especially not for smaller files (grammar.lsp, xargs.1). In several cases, the file was smaller than the dictionary. The last file is simply the result of tarballing the files without compression. I expect the compression could in most cases be improved by a subsequent Huffman encoding or similar, but I have not yet written the code for that. 
+And the [Large](http://corpus.canterbury.ac.nz/details/large/RatioByRatio.html) corpus:
 
-Sadly, Canterbury corpus does not include LZW for comparison. OTOH, Matt Mahoney's large text challenge (encoding Wikipedia) does include tg
+        FILE\BITS               10      12      14      16      18     
+        E.coli                 2.28    2.16    2.11    2.10    2.15
+        bible                  3.65    3.03    2.69    2.50    2.48    
+        world                  4.52    3.90    3.15    2.66    2.64
+
+And finally [Matt Mahoney's Large Text Compression Benchmark](http://mattmahoney.net/dc/text.html) (MMLTCB). Here, results are recorded as a number of bytes. 
+
+        FILE\BITS       10     12     14     16     18     20     22     24 
+        enwik8         4.31   3.84   3.50   3.22   2.98   2.76   2.81   2.92 
+        enwik9         4.31   3.66   3.21   2.91   2.67   2.50   2.36   2.28
+
+                            Compressed Size      Decompressor    Total Size
+                       enwik8          enwik 9     Size         enwik9 + prog
+        lzwgc c -b24   36,521,361  284,635,689   18674          284,654,363 
+        lzwgc c -b16   40,271,292  364,094,150   18674          364,112,824
+
+Compared to `compress`, LZW-GC compares unfavorably for the Canterbury corpus programs, marginally better for the Large corpus, and a lot better for MMLTCB. LZW-GC does better than all LZW variants in the MMLTCB. Admittedly, that's not saying much. LZW's getting its bits kicked. The 24 bit compression of enwik9 is really not half bad.
+
+I'd like to see how well LZW-GC combines with a Huffman encoding to help cover the weakness of sparsely used dictionary entries. 
 
 
-## (Thought): Pre-Initialized Dictionary?
+## (Thought): Pre-Trained Dictionary?
 
-An interesting possibility with LZW-GC is to start with a pre-initialized dictionary, e.g. based on compressing a known input. With the adaptive nature of LZW-GC, we wouldn't be hurt by this even if the actual input varies wildly from the expected. But the advantage of doing so could be significant in cases where we compress lots of small, similar inputs and want to avoid repeated 'warmup' costs.
-
-## 
-
-
-
-
+An interesting possibility with LZW-GC is to start with a pre-initialized dictionary, e.g. based on decompressing a standard file. The idea would be to marginalize the initial warmup costs... and start with a better dictionary for common use-cases.
