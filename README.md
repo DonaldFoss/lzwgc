@@ -88,7 +88,7 @@ At the moment, lzwgc outputs/inputs 16 bit tokens (bigendian) for up to 16 bits,
 
 The compression quality for LZW-GC depends only on dictionary size and the input file. In this case, I'm using sizes 2^N - 1 (thus reserving one token, common for stop codes and similar). The figures reported below are for packed tokens. But since I don't actually pack the tokens yet, I simply multiply the effective size by the appropriate factor (e.g. 12/16 for the 12 bit tokens). 
 
-From the [Canterbury Corpus](http://corpus.canterbury.ac.nz/details/cantrbry/RatioByRatio.html). Values here are bits per character (so 2 is 75% compression; lower is better). Here `compress` (another variant of LZW) is included for comparison:
+From the [Canterbury Corpus](http://corpus.canterbury.ac.nz/details/cantrbry/RatioByRatio.html). Values here are bits per character (so 2 is 75% compression; lower is better).
 
         FILE\BITS               10      12      14      16      18     
         alice29.txt  text      4.06    3.48    3.33    3.69    4.15     
@@ -125,12 +125,16 @@ And finally [Matt Mahoney's Large Text Compression Benchmark](http://mattmahoney
 
 Compared to `compress` (another LZW variant), LZW-GC compares unfavorably for the Canterbury corpus programs, marginally better for the Large corpus, and a lot better for MMLTCB. LZW-GC does marginally better than all LZW variants in the MMLTCB. Admittedly, that's not saying much. LZW gets its bits kicked in that contest. However, the 24 bit compression of enwik9 is really not half bad.
 
-### Huffman Encoding
+Addendum: It seems there is a [comparison between LZW variants in 2006](http://encode.ru/threads/216-LZW-LZMW-and-LZAP-comparison), but I'm not able to find the inputs to these. Unfortunately, the data source is not known to me. If I'm guessing right, the author is using 16 bit encodings, and `book1` is a sample from the [Calgary corpus](http://corpus.canterbury.ac.nz/descriptions/#calgary), and `calgary.tar` is the whole thing.
 
-My intention is to use LZW-GC together with a subsequent Huffman encoding to test the resulting performance. 
+                                                ----------LZW-GC---------- 
+                        LZW     LZMW    LZAP    12      14      16      18        
+        book1          3.27     3.30    3.19   3.76    3.42    3.31    3.61
+        calgary.tar    3.20     3.05    2.99   3.39    3.19    3.16    3.31
 
+Based on this data, I'd guess that the LZW, LZMW, and LZAP programs are using 16 bit dictionaries. It seems that LZW-GC doesn't offer any advantages for these files, and that an LZAP-GC variant might be worth investigating. 
 
-
+I would like eventually to try a Huffman encoding pass after LZW compression.
 
 ## (Possibility): Pre-Trained Dictionary?
 
