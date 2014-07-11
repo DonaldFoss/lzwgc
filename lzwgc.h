@@ -25,21 +25,16 @@ typedef struct {
     token_t         hist_token;  // last token in update stream 
     uint32_t        alloc_idx;   // last index allocated
 
-    // output the last GC'd token after each update (at alloc_idx)
-    // this is mostly to help maintain a reverse lookup table.
-    token_t         gc_tok;
-    unsigned char   gc_char;
+    // hashtable is constructed on first lzwgc_dict_lookup
+    token_t *       ht_data;     // tokens to search 
+    uint32_t        ht_size;     // space for hashtable
+    uint32_t        ht_sat;      // number of filled locations
 } lzwgc_dict;
 
 typedef struct {
     // internal state
     lzwgc_dict      dict;
     token_t         matched_token;
-
-    // a collision hashtable for fast reverse lookups...
-    token_t *       ht_content;     // tokens to search 
-    uint32_t        ht_size;         // hashtable max size
-    uint32_t        ht_saturation;   // number of filled locations
 
     // output after each operation (at most one token)
     bool            have_output;
@@ -59,6 +54,7 @@ typedef struct {
 
 void lzwgc_dict_init(lzwgc_dict*, uint32_t size); // size from 2^8 to 2^24
 void lzwgc_dict_update(lzwgc_dict*, token_t); // update from token stream
+bool lzwgc_dict_lookup(lzwgc_dict*, token_t s, unsigned char c, token_t* out);
 void lzwgc_dict_fini(lzwgc_dict*); // clear memory from dictionary
 
 // fetch at most count elements (reversed)
